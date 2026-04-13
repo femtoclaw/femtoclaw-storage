@@ -102,13 +102,13 @@ mod tests {
         let wal_path = dir.path().join("test.wal");
         
         {
-            let mut wal = Wal.open(&wal_path).unwrap();
+            let mut wal = Wal::open(&wal_path).unwrap();
             wal.append("test_event", serde_json::json!({"foo": "bar"})).unwrap();
             wal.append("test_event", serde_json::json!({"baz": 123})).unwrap();
         }
 
         {
-            let wal = Wal.open(&wal_path).unwrap();
+            let wal = Wal::open(&wal_path).unwrap();
             let entries = wal.replay().unwrap();
             assert_eq!(entries.len(), 2);
             assert_eq!(entries[0].id, 0);
