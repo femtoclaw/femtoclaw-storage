@@ -1,106 +1,56 @@
-# FemtoClaw Storage
+# 💾 FemtoClaw Storage & WAL
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Status](https://img.shields.io/badge/Status-Normative-green.svg)]()
+[![Tier](https://img.shields.io/badge/Tier-Enterprise-green.svg)]()
 
-FemtoClaw Storage — persistence, state snapshots, and execution history.
+The **FemtoClaw Storage** library provides the high-performance persistence layer required for industrial agent execution. It focuses on three core pillars: **Durability**, **Crash Resilience**, and **State Reconstruction**.
 
-## Overview
+---
 
-`femtoclaw-storage` provides the persistence layer for the FemtoClaw Industrial Agent Runtime. It implements state management and execution history storage according to the [FemtoClaw Storage Specification (FC-STORAGE-0001)](../femtoclaw-spec/FC-STORAGE-0001-Persistence_and_Storage_Specification.md).
+## 🪵 Write-Ahead Log (WAL): Spec 20
 
-This library handles memory persistence, execution history, and state snapshots for the runtime.
+FemtoClaw implements a strict **Write-Ahead Log (WAL)** to ensure that no execution state is lost during unexpected process termination. Every state mutation (e.g., a message being pushed to memory or a tool result being recorded) is committed to durable storage *before* it is applied to the active runtime memory.
 
-## Features
+### Key Durability Features:
+- **Append-only I/O**: High-throughput sequential disk writes ensure minimal latency impact on the agent control loop.
+- **Atomic Commits**: Mutations are only visible to the runtime once they have been successfully flushed to the WAL.
+- **Crash Recovery**: On startup, the runtime replays the WAL to reconstruct the exact state of the agent's memory and history.
+- **Audit Integrity**: The log provides a permanent, immutable, and tamper-evident record of all agent interactions for compliance.
 
-- **Execution History**: Record and retrieve all execution events
-- **State Snapshots**: Save and restore runtime state
-- **Persistent Storage**: Async file-based storage with JSON serialization
-- **Memory Management**: Configurable history limits
+---
 
-## Architecture
+## 🔄 State Reconstruction (Replay)
 
-```
-┌─────────────────────────────────────────────┐
-│         FemtoClaw Runtime                   │
-│  ┌─────────────────────────────────────┐   │
-│  │         Memory Subsystem            │   │
-│  │  ┌────────────┐ ┌────────────┐      │   │
-│  │  │ Short-term │ │ Long-term  │      │   │
-│  │  │   Memory   │ │   Memory   │      │   │
-│  │  └────────────┘ └────────────┘      │   │
-│  └─────────────────────────────────────┘   │
-│                    ↓                        │
-│  ┌─────────────────────────────────────┐   │
-│  │       femtoclaw-storage             │   │
-│  │  ┌──────────┐ ┌─────────┐           │   │
-│  │  │ History  │ │Snapshot │           │   │
-│  │  │  Store   │ │  Store  │           │   │
-│  │  └──────────┘ └─────────┘           │   │
-│  └─────────────────────────────────────┘   │
-└─────────────────────────────────────────────┘
-```
-
-## Installation
-
-```toml
-[dependencies]
-femtoclaw-storage = "1.0"
-```
-
-## Usage
+If the runtime process terminates unexpectedly (e.g., crash, power failure, or node migration), the WAL can be used to restore the full execution context:
 
 ```rust
-use femtoclaw_storage::{History, Snapshot, Store};
+use femtoclaw_storage::Wal;
 
-// Execution history
-let mut history = History::new(1000); // Max 1000 entries
-history.push(
-    "user message".to_string(),
-    "assistant response".to_string(),
-    serde_json::json!({"model": "gpt-4"})
-);
+// 1. Open the existing durable log
+let mut wal = Wal::open("~/.femtoclaw/execution.wal")?;
 
-// State snapshots
-let state = serde_json::json!({
-    "messages": [...],
-    "capabilities": [...]
-});
-let snapshot = Snapshot::new(state);
+// 2. Replay events to restore memory history
+let entries = wal.replay()?; 
 
-// Persistent storage
-let store = Store::new("/data/femtoclaw/state.json".into());
-store.save(&snapshot.state).await?;
+for entry in entries {
+    println!("Recovered event [{}]: {}", entry.id, entry.event_type);
+}
 ```
 
-## Modules
+---
 
-- `history` — Execution history management
-- `snapshot` — State snapshot definitions
-- `store` — Async persistent storage
+## 📦 Backends & Support
 
-## Requirements
+| Backend | Tier | Purpose |
+|---------|------|---------|
+| **Filesystem (Native)** | Enterprise | Optimized for workstations and enterprise servers. |
+| **In-Memory (Ephemeral)** | Local | For stateless or transient execution cycles (testing). |
+| **Distributed (Reference)** | Reference | (In Progress) Cluster-wide synchronization via Spec 41. |
 
-- Rust 1.75 or later
-- serde 1.x
-- serde_json 1.x
-- tokio 1.x (with fs, rt-multi-thread, macros)
-- thiserror 1.x
-- chrono 0.4
-- uuid 1.x
+---
 
-## Related Specifications
+## 📄 Related Specifications
+- **[FC-STORAGE-0001: Persistence and Storage](../femtoclaw-spec/FC-STORAGE-0001-Persistence_and_Storage_Specification.md)**
+- **[FC-20: Persistent Storage Specification](../femtoclaw-spec/20-FemtoClaw_Persistent_Storage_Specification.md)**
 
-- [FC-STORAGE-0001: Persistence and Storage](../femtoclaw-spec/FC-STORAGE-0001-Persistence_and_Storage_Specification.md)
-- [FC-06: Memory Subsystem](../femtoclaw-spec/06-FemtoClaw_Memory_Subsystem_Specification.md)
-
-## License
-
-Copyright 2026 FemtoClaw
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Copyright © 2026 FemtoClaw Project.
